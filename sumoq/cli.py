@@ -20,6 +20,9 @@ _custom_fields = []
 _namespaces = []
 _json_suggestions = {}
 _sumo_api_base = "https://api.sumologic.com/api/v1"
+_toolbar_fields = ""
+_toolbar_ns = ""
+_toolbar_idx = ""
 
 
 class CompletionMode(Enum):
@@ -164,6 +167,14 @@ def read_conf_idx(conf):
     return conf.get("indexes") or []
 
 
+def get_toolbar():
+    global _toolbar_fields, _toolbar_ns, _toolbar_idx
+    return (
+        "<tab> select a completion. <esc> <enter> to exit. "
+        "fields: {:<10} namespaces: {:<10} indexes: {:<10}"
+    ).format(_toolbar_fields, _toolbar_ns, _toolbar_idx)
+
+
 @asyncclick.command()
 @asyncclick.option("-c", "--conf", help="config file path")
 @asyncclick.option("-k", "--keys", help="Sumo Logic API key file path")
@@ -186,11 +197,9 @@ async def cli(conf, keys, kubeconf):
                 multiline=True,
                 completer=FuzzyCompleter(SumoQueryCompleter()),
                 auto_suggest=AutoSuggestFromHistory(),
-                bottom_toolbar=(
-                    "<tab> select a completion. <esc> <enter> to exit."
-                ),
+                bottom_toolbar=get_toolbar,
+                refresh_interval=1.0,
             )
-        asyncclick.echo(result)
 
         pyperclip.copy(result)
         asyncclick.echo("\nCopied to clipboard")
@@ -213,8 +222,9 @@ def get_auth_header(keys, conf):
 
 
 async def fetch_idx(session):
-    global _indexes, _sumo_api_base
+    global _indexes, _sumo_api_base, _toolbar_idx
 
+    _toolbar_idx = "loading"
     cursor = None
     params = {"limit": 1000}
 
@@ -234,17 +244,20 @@ async def fetch_idx(session):
 
         if not (cursor := resp_dict.get("next")):
             break
+    _toolbar_idx = "loaded"
 
 
 async def fetch_custom_fields(session):
-    global _custom_fields, _sumo_api_base
+    global _custom_fields, _sumo_api_base, _toolbar_fields
 
+    _toolbar_fields = "loading"
     async with session.get(
         f"{_sumo_api_base}/fields",
     ) as resp:
         resp_dict = await resp.json()
 
     _custom_fields.extend(d["fieldName"] for d in resp_dict.get("data") or [])
+    _toolbar_fields = "loaded"
 
 
 async def fetch_namespaces(kubeconf):
@@ -253,10 +266,12 @@ async def fetch_namespaces(kubeconf):
     Uses kubectl for now, ideally we can change to use an async k8s client in
     the future.
     """
+    global _namespaces, _encode, _toolbar_ns
     if not kubeconf:
+        _toolbar_ns = "aborted"
         return
 
-    global _namespaces, _encode
+    _toolbar_ns = "loading"
     conf_path = os.path.abspath(os.path.expanduser(kubeconf))
 
     proc = await asyncio.create_subprocess_shell(
@@ -273,6 +288,7 @@ async def fetch_namespaces(kubeconf):
         line.split(" ", 1)[0]
         for line in stdout.decode(_encode).split("\n")[1:]
     )
+    _toolbar_ns = "loaded"
 
 
 async def fetch_json_suggestions(conf):
