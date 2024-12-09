@@ -1,0 +1,5 @@
+prompt_toolkit>=3.0.48,<4.0.0
+PyYAML>=6.0.2,<7.0.0
+asyncclick>=8.1.7.2,<9.0.0.0
+aiohttp>=3.11.10,<4.0.0
+aiodns>=3.2.0,<4.0.0
