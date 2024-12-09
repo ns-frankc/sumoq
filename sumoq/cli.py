@@ -2,6 +2,7 @@ import asyncio
 import base64
 import os
 import re
+from enum import Enum
 
 import aiohttp
 import asyncclick
@@ -14,38 +15,46 @@ _indexes = []
 _cwd = os.path.abspath(__file__)
 _encode = "utf-8"
 _custom_fields = []
+_namespaces = []
 _sumo_api_base = "https://api.sumologic.com/api/v1"
 
 
+class CompletionMode(Enum):
+    FIELD = 1
+    VALUE = 2
+
+
 class SumoQueryCompleter(Completer):
-    _re_fields = r"^(\w+=[\w\"]+\s+)*"
+    _re_fields = r"^(([\w\.]+|%\".+\")=([\w\-:/\.+@#\$%\^]+|\".+\")\s+)*"
     RULES = (
         (_re_fields + r"_index=$", "index"),
         (_re_fields + r"_sourceName=$", "src_name"),
         (_re_fields + r"_loglevel=$", "log_level"),
-        (_re_fields, "field"),
+        (_re_fields + r"$", "field"),
     )
     COMPILED_RULES = [(re.compile(r[0]), r[1]) for r in RULES]
+    FIELD_SPECIAL_CHAR_CHECK = re.compile(r"(^[\d\.]|.*[\W\.]|.*\.\.)")
+    VALUE_SPECIAL_CHAR_CHECK = re.compile(r"[^\w\-:/\.+@#\$%\^]")
 
     LOG_LEVELS = ("trace", "debug", "info", "warn", "error", "critical")
     BUILT_IN_FIELDS = [
-        "_collector=",
-        "_messageCount=",
-        "_messageTime=",
-        "_raw=",
-        "_receiptTime=",
-        "_size=",
-        "_source=",
-        "_sourceCategory=",
-        "_sourceHost=",
-        "_sourceName=",
-        "_format=",
-        "_view=",
-        "_index=",
+        "_collector",
+        "_messageCount",
+        "_messageTime",
+        "_raw",
+        "_receiptTime",
+        "_size",
+        "_source",
+        "_sourceCategory",
+        "_sourceHost",
+        "_sourceName",
+        "_format",
+        "_view",
+        "_index",
     ]
 
     def get_completions(self, document, complete_ev):
-        global _indexes, _custom_fields
+        global _indexes, _custom_fields, _namespaces
 
         cur_text = document.text_before_cursor
         for r, name in self.COMPILED_RULES:
@@ -53,18 +62,27 @@ class SumoQueryCompleter(Completer):
                 if name == "index":
                     yield from self._yeild_completions(_indexes)
                 elif name == "src_name":
-                    # namespaces
-                    pass
+                    yield from self._yeild_completions(_namespaces)
                 elif name == "log_level":
                     yield from self._yeild_completions(self.LOG_LEVELS)
                 elif name == "field":
                     # This should be checked later than the field values.
                     yield from self._yeild_completions(
-                        self.BUILT_IN_FIELDS + _custom_fields
+                        self.BUILT_IN_FIELDS + _custom_fields,
+                        mode=CompletionMode.FIELD,
                     )
+                break
 
-    def _yeild_completions(self, values):
+    def _yeild_completions(self, values, mode=CompletionMode.VALUE):
         for v in values:
+            if mode is CompletionMode.FIELD:
+                if re.match(self.FIELD_SPECIAL_CHAR_CHECK, v):
+                    v = f'%"{v}"'
+                v += "="
+            elif mode is CompletionMode.VALUE:
+                if re.match(self.VALUE_SPECIAL_CHAR_CHECK, v):
+                    v = f'"{v}"'
+
             yield Completion(v)
 
 
@@ -98,6 +116,7 @@ async def cli(conf, keys, kubeconf):
     session = aiohttp.ClientSession(headers=headers)
     asyncio.create_task(fetch_custom_fields(session))
     asyncio.create_task(fetch_idx(session))
+    asyncio.create_task(fetch_namespaces(kubeconf))
 
     try:
         p_session = PromptSession()
@@ -158,8 +177,34 @@ async def fetch_custom_fields(session):
     ) as resp:
         resp_dict = await resp.json()
 
-    _custom_fields.extend(
-        f"{d['fieldName']}=" for d in resp_dict.get("data") or []
+    _custom_fields.extend(d["fieldName"] for d in resp_dict.get("data") or [])
+
+
+async def fetch_namespaces(kubeconf):
+    """Fetch all possible namespaces from k8s.
+
+    Uses kubectl for now, ideally we can change to use an async k8s client in
+    the future.
+    """
+    if not kubeconf:
+        return
+
+    global _namespaces, _encode
+    conf_path = os.path.abspath(os.path.expanduser(kubeconf))
+
+    proc = await asyncio.create_subprocess_shell(
+        f"kubectl --kubeconfig {conf_path} get namespaces",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0 or stderr:
+        return
+
+    _namespaces.extend(
+        line.split(" ", 1)[0] for line in
+        stdout.decode(_encode).split("\n")[1:]
     )
 
 
