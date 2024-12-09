@@ -3,3 +3,4 @@ jedi>=0.19.2
 jedi-language-server>=0.42.0
 setuptools>=75.6.0
 build>=1.2.2.post1
+ipython>=8.30.0

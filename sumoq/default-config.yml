@@ -1,0 +1,48 @@
+app_json:
+  app-name:
+    - kormorant
+    - hiveworker
+    - hive
+    - tako
+    - conductor
+    - gumshoe
+  level:
+    - debug
+    - info
+    - error
+    - critical
+  trace.sampled:
+    - true
+    - false
+  trace-id: [""]
+  span-id: [""]
+  grpc.method: [""]
+  tenant.id: [""]
+  tenant.app:
+    - azure_storage
+    - box
+    - chatgpt
+    - ciscowebex
+    - confluence
+    - dropbox
+    - egnyte
+    - gcalendar
+    - gdrive
+    - github
+    - gmail
+    - jira
+    - msteams
+    - okta
+    - onedrive
+    - outlook
+    - purview
+    - salesforce
+    - servicenow
+    - sharefile
+    - sharepoint
+    - slackenterprise
+    - workday
+    - yammer
+    - zendesk
+    - zoom
+  tenant.instance: [""]
