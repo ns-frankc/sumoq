@@ -2,6 +2,8 @@
 
 install:
 	python -m pip install -e .
+
+install-dev: install
 	python -m pip install -r requirements-dev.txt
 
 clean:

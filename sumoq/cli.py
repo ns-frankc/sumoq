@@ -1,5 +1,4 @@
 import asyncio
-import pyperclip
 import base64
 import os
 import re
@@ -7,11 +6,12 @@ from enum import Enum
 
 import aiohttp
 import asyncclick
+import pyperclip
 import yaml
 from prompt_toolkit import PromptSession
+from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import Completer, Completion, FuzzyCompleter
 from prompt_toolkit.patch_stdout import patch_stdout
-from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 
 _indexes = []
 _cwd = os.path.abspath(os.path.dirname(__file__))
@@ -31,16 +31,25 @@ class CompletionMode(Enum):
 class SumoQueryCompleter(Completer):
     _re_field_unit = r"([\w\.]+|%\".+\")"
     _re_value_unit = r"([\w\-:/\.+@#\$%\^]+|\".*\")"
-    _re_fields = rf"^({_re_field_unit}={_re_value_unit}\s+)*"
+    _re_not = r"((?i:not)\s+)"
+    _re_and_or_not = r"((?i:(and|or))(\s+(?i:not)\s+\(|\s+)+)"
+    _re_fields = (
+        rf"^({_re_not}?"
+        rf"\(*{_re_field_unit}={_re_value_unit}\)*\s+"
+        rf"{_re_and_or_not}*)*"
+    )
+    _re_sumo_op = r"(.|\s)*\|\s*$"
     _re_where_fields = (
-        rf".*\|\s*where\s+({_re_field_unit}={_re_value_unit}\s+"
-        r"((and|AND|or|OR|not|NOT)\s+)+)*"
+        rf"(.|\s)*\|\s*where\s+{_re_not}?"
+        rf"\(*({_re_field_unit}={_re_value_unit}\)*\s+"
+        rf"{_re_and_or_not}+)*"
     )
     RULES = (
         (_re_fields + r"$", "field"),
         (_re_fields + r"_index=$", "index"),
         (_re_fields + r"_sourceName=$", "src_name"),
         (_re_fields + r"_loglevel=$", "log_level"),
+        (_re_sumo_op, "sumo_op"),
         (_re_where_fields + r"$", "where_field"),
         (
             _re_where_fields + r"(?P<where_field>([\w\.]+|%\".+\"))=$",
@@ -67,6 +76,23 @@ class SumoQueryCompleter(Completer):
         "_view",
         "_index",
     ]
+    SUMO_OPS = (
+        "parse",
+        "format",
+        "formatDate",
+        "json",
+        "where",
+        "count",
+        "sort by",
+        "json",
+        "count",
+        "count_distinct",
+        "count_frequent",
+        "min",
+        "max",
+        "sum",
+        "values",
+    )
 
     def get_completions(self, document, complete_ev):
         global _indexes, _custom_fields, _namespaces
@@ -85,6 +111,8 @@ class SumoQueryCompleter(Completer):
                         self.BUILT_IN_FIELDS + _custom_fields,
                         mode=CompletionMode.FIELD,
                     )
+                elif name == "sumo_op":
+                    yield from self._yeild_completions(self.SUMO_OPS)
                 elif name == "where_field":
                     yield from self._yeild_completions(
                         _json_suggestions.keys(), mode=CompletionMode.FIELD
@@ -137,9 +165,9 @@ def read_conf_idx(conf):
 
 
 @asyncclick.command()
-@asyncclick.option("--conf", help="config file path")
-@asyncclick.option("--keys", help="Sumo Logic API key file path")
-@asyncclick.option("--kubeconf", help="kubectl config file path")
+@asyncclick.option("-c", "--conf", help="config file path")
+@asyncclick.option("-k", "--keys", help="Sumo Logic API key file path")
+@asyncclick.option("-kc", "--kubeconf", help="kubectl config file path")
 async def cli(conf, keys, kubeconf):
     global _indexes
 
@@ -158,8 +186,9 @@ async def cli(conf, keys, kubeconf):
                 multiline=True,
                 completer=FuzzyCompleter(SumoQueryCompleter()),
                 auto_suggest=AutoSuggestFromHistory(),
-                bottom_toolbar=("<tab> select a completion. "
-                "<esc> <enter> to exit.")
+                bottom_toolbar=(
+                    "<tab> select a completion. <esc> <enter> to exit."
+                ),
             )
         asyncclick.echo(result)
 
