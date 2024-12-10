@@ -50,3 +50,5 @@ app_json:
 indexes: []
 
 custom_fields: []
+
+namespaces: []

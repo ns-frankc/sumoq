@@ -18,7 +18,7 @@ from pupdb.core import PupDB
 _cwd = os.path.abspath(os.path.dirname(__file__))
 _encode = "utf-8"
 _sumo_api_base = "https://api.sumologic.com/api/v1"
-_default_conf_name = "default-conf.yml"
+_default_conf_name = "default-config.yml"
 _toolbar_fields = ""
 _toolbar_ns = ""
 _toolbar_idx = ""
@@ -172,12 +172,21 @@ def read_keys(keys):
 def read_conf_fields_idx(conf):
     global _db, _toolbar_idx, _toolbar_fields
     with open(conf, "r") as cfp:
-        conf = yaml.load(cfp, Loader=yaml.loader.SafeLoader)
+        conf_dict = yaml.load(cfp, Loader=yaml.loader.SafeLoader)
 
-    _db.set(DBKeys.FIELDS, conf.get("custom_fields") or [])
-    _db.set(DBKeys.INDEXES, conf.get("indexes") or [])
+    _db.set(DBKeys.FIELDS, conf_dict.get("custom_fields") or [])
+    _db.set(DBKeys.INDEXES, conf_dict.get("indexes") or [])
     _toolbar_fields = "using conf"
     _toolbar_idx = "using conf"
+
+
+def read_conf_ns(conf):
+    global _db, _toolbar_ns
+    with open(conf, "r") as cfp:
+        conf_dict = yaml.load(cfp, Loader=yaml.loader.SafeLoader)
+
+    _db.set(DBKeys.NAMESPACES, conf_dict.get("namespaces") or [])
+    _toolbar_ns = "using conf"
 
 
 def get_toolbar():
@@ -200,7 +209,8 @@ def get_toolbar():
     help="Generate a config file from the default config",
 )
 async def cli(conf, keys, kubeconf, clean_db, generate_conf):
-    global _default_conf_name, _toolbar_fields, _toolbar_idx
+    global _cwd, _db, _default_conf_name
+    global _toolbar_fields, _toolbar_idx, _toolbar_ns
 
     if generate_conf:
         shutil.copy(
@@ -222,7 +232,15 @@ async def cli(conf, keys, kubeconf, clean_db, generate_conf):
         _toolbar_idx = "using cache"
     else:
         read_conf_fields_idx(conf)
-    asyncio.create_task(fetch_namespaces(kubeconf))
+
+    if not kubeconf:
+        if _db.get(DBKeys.NAMESPACES):
+            _toolbar_ns = "using cache"
+        else:
+            read_conf_ns(conf)
+    else:
+        asyncio.create_task(fetch_namespaces(kubeconf))
+
     asyncio.create_task(fetch_json_suggestions(conf))
 
     try:
@@ -305,9 +323,6 @@ async def fetch_namespaces(kubeconf):
     the future.
     """
     global _db, _encode, _toolbar_ns
-    if not kubeconf:
-        _toolbar_ns = "using cache"
-        return
 
     _toolbar_ns = "loading"
     conf_path = os.path.abspath(os.path.expanduser(kubeconf))
