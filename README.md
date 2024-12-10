@@ -75,10 +75,14 @@ The current Sumo Logic log search UI provides only prefix based auto complete. W
 
 For example, if I want to search a log from "SV5", typing SV5 after `_index=` doesn't give me the `us_sv5_debug` suggestion I want. I would only get `sv5_apiconnector_notify`, which is far from my intention.
 
+<img width="730" alt="image-20241204-031331" src="https://github.com/user-attachments/assets/47fbf89d-50bd-4399-8785-0f3becf0f1c3">
+
 Solution
 ====
 
 SumoQ provides fuzzy matched suggestions, so engineers wouldn't need to look up into wiki pages and know that SV5's index starts with "us_". As long as "sv5" is typed, "us_sv5_debug" would show up in suggestions.
+
+![sv5_suggestion](https://github.com/user-attachments/assets/9ae767b1-efdd-4805-b25b-1c80e50ee2e9)
 
 Cached values
 ====
