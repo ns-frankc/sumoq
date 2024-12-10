@@ -12,17 +12,15 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import Completer, Completion, FuzzyCompleter
 from prompt_toolkit.patch_stdout import patch_stdout
+from pupdb.core import PupDB
 
-_indexes = []
 _cwd = os.path.abspath(os.path.dirname(__file__))
 _encode = "utf-8"
-_custom_fields = []
-_namespaces = []
-_json_suggestions = {}
 _sumo_api_base = "https://api.sumologic.com/api/v1"
 _toolbar_fields = ""
 _toolbar_ns = ""
 _toolbar_idx = ""
+_db = PupDB(os.path.join(_cwd, "db.json"))
 
 
 class CompletionMode(Enum):
@@ -98,34 +96,39 @@ class SumoQueryCompleter(Completer):
     )
 
     def get_completions(self, document, complete_ev):
-        global _indexes, _custom_fields, _namespaces
+        global _db
 
         cur_text = document.text_before_cursor
         for r, name in self.COMPILED_RULES:
             if matched := re.match(r, cur_text):
                 if name == "index":
-                    yield from self._yeild_completions(_indexes)
+                    yield from self._yeild_completions(
+                        _db.get(DBKeys.INDEXES) or []
+                    )
                 elif name == "src_name":
-                    yield from self._yeild_completions(_namespaces)
+                    yield from self._yeild_completions(
+                        _db.get(DBKeys.NAMESPACES) or []
+                    )
                 elif name == "log_level":
                     yield from self._yeild_completions(self.LOG_LEVELS)
                 elif name == "field":
                     yield from self._yeild_completions(
-                        self.BUILT_IN_FIELDS + _custom_fields,
+                        self.BUILT_IN_FIELDS + _db.get(DBKeys.FIELDS) or [],
                         mode=CompletionMode.FIELD,
                     )
                 elif name == "sumo_op":
                     yield from self._yeild_completions(self.SUMO_OPS)
                 elif name == "where_field":
                     yield from self._yeild_completions(
-                        _json_suggestions.keys(), mode=CompletionMode.FIELD
+                        (_db.get(DBKeys.JSON_APP) or {}).keys(),
+                        mode=CompletionMode.FIELD,
                     )
                 elif name == "where_value":
                     field = matched.group("where_field")
                     if field.startswith('%"'):
                         field = field.lstrip('%"').rstrip('"')
                     yield from self._yeild_completions(
-                        _json_suggestions.get(field) or [],
+                        (_db.get(DBKeys.JSON_APP) or {}).get(field) or [],
                         mode=CompletionMode.WHERE_VALUE,
                     )
                 break
@@ -146,6 +149,13 @@ class SumoQueryCompleter(Completer):
                     v = f'"{v}"'.lower()
 
             yield Completion(v)
+
+
+class DBKeys:
+    NAMESPACES = "namespaces"
+    FIELDS = "fields"
+    INDEXES = "idx"
+    JSON_APP = "json_app"
 
 
 def read_keys(keys):
@@ -171,7 +181,7 @@ def get_toolbar():
     global _toolbar_fields, _toolbar_ns, _toolbar_idx
     return (
         "<tab> select a completion. <esc> <enter> to exit. "
-        "fields: {:<10} namespaces: {:<10} indexes: {:<10}"
+        "fields: {:<15} namespaces: {:<15} indexes: {:<15}"
     ).format(_toolbar_fields, _toolbar_ns, _toolbar_idx)
 
 
@@ -179,13 +189,20 @@ def get_toolbar():
 @asyncclick.option("-c", "--conf", help="config file path")
 @asyncclick.option("-k", "--keys", help="Sumo Logic API key file path")
 @asyncclick.option("-kc", "--kubeconf", help="kubectl config file path")
-async def cli(conf, keys, kubeconf):
-    global _indexes
+@asyncclick.option("-cd", "--clean-db", is_flag=True, help="clean up db first")
+async def cli(conf, keys, kubeconf, clean_db):
+    global _indexes, _toolbar_fields, _toolbar_idx
+    if clean_db:
+        _db.truncate_db()
 
-    headers = {"Authorization": get_auth_header(keys, conf)}
-    session = aiohttp.ClientSession(headers=headers)
-    asyncio.create_task(fetch_custom_fields(session))
-    asyncio.create_task(fetch_idx(session))
+    session = None
+    if auth_header := get_auth_header(keys, conf):
+        session = aiohttp.ClientSession(headers={"Authorization": auth_header})
+        asyncio.create_task(fetch_custom_fields(session))
+        asyncio.create_task(fetch_idx(session))
+    else:
+        _toolbar_fields = "using cache"
+        _toolbar_idx = "using cache"
     asyncio.create_task(fetch_namespaces(kubeconf))
     asyncio.create_task(fetch_json_suggestions(conf))
 
@@ -204,11 +221,16 @@ async def cli(conf, keys, kubeconf):
         pyperclip.copy(result)
         asyncclick.echo("\nCopied to clipboard")
     finally:
-        await session.close()
+        try:
+            await session.close()
+        except AttributeError:
+            pass
 
 
 def get_auth_header(keys, conf):
     global _encode
+    if not keys:
+        return
 
     try:
         aid, ak = read_keys(keys)
@@ -222,33 +244,33 @@ def get_auth_header(keys, conf):
 
 
 async def fetch_idx(session):
-    global _indexes, _sumo_api_base, _toolbar_idx
+    global _db, _sumo_api_base, _toolbar_idx
 
     _toolbar_idx = "loading"
     cursor = None
     params = {"limit": 1000}
+    idx = []
 
     while True:
-        if cursor:
-            params["token"] = cursor
-        else:
-            params.pop("token", None)
-
         async with session.get(
             f"{_sumo_api_base}/partitions",
             params=params,
         ) as resp:
             resp_dict = await resp.json()
 
-        _indexes.extend(d["name"] for d in resp_dict.get("data") or [])
+        idx.extend(d["name"] for d in resp_dict.get("data") or [])
 
         if not (cursor := resp_dict.get("next")):
             break
+        else:
+            params["token"] = cursor
+
+    _db.set(DBKeys.INDEXES, idx)
     _toolbar_idx = "loaded"
 
 
 async def fetch_custom_fields(session):
-    global _custom_fields, _sumo_api_base, _toolbar_fields
+    global _db, _sumo_api_base, _toolbar_fields
 
     _toolbar_fields = "loading"
     async with session.get(
@@ -256,7 +278,9 @@ async def fetch_custom_fields(session):
     ) as resp:
         resp_dict = await resp.json()
 
-    _custom_fields.extend(d["fieldName"] for d in resp_dict.get("data") or [])
+    _db.set(
+        DBKeys.FIELDS, [d["fieldName"] for d in resp_dict.get("data") or []]
+    )
     _toolbar_fields = "loaded"
 
 
@@ -266,9 +290,9 @@ async def fetch_namespaces(kubeconf):
     Uses kubectl for now, ideally we can change to use an async k8s client in
     the future.
     """
-    global _namespaces, _encode, _toolbar_ns
+    global _db, _encode, _toolbar_ns
     if not kubeconf:
-        _toolbar_ns = "aborted"
+        _toolbar_ns = "using cache"
         return
 
     _toolbar_ns = "loading"
@@ -284,15 +308,18 @@ async def fetch_namespaces(kubeconf):
     if proc.returncode != 0 or stderr:
         return
 
-    _namespaces.extend(
-        line.split(" ", 1)[0]
-        for line in stdout.decode(_encode).split("\n")[1:]
+    _db.set(
+        DBKeys.NAMESPACES,
+        [
+            line.split(" ", 1)[0]
+            for line in stdout.decode(_encode).split("\n")[1:]
+        ],
     )
     _toolbar_ns = "loaded"
 
 
 async def fetch_json_suggestions(conf):
-    global _cwd, _json_suggestions
+    global _cwd, _db
 
     if not conf:
         conf = os.path.join(_cwd, "default-config.yml")
@@ -300,7 +327,7 @@ async def fetch_json_suggestions(conf):
     with open(conf, "r") as cfp:
         conf_dict = yaml.load(cfp, Loader=yaml.SafeLoader)
 
-    _json_suggestions = conf_dict.get("app_json") or {}
+    _db.set(DBKeys.JSON_APP, conf_dict.get("app_json") or {})
 
 
 if __name__ == "__main__":

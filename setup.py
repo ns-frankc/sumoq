@@ -11,7 +11,7 @@ def read_requirements(filename):
 
 
 setup(
-    name="sumo query builder prompt",
+    name="sumoq",
     version="0.1.0",
     description="An interactive sumo query builder",
     author="Chen Chao Shih",
