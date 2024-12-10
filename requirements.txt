@@ -5,3 +5,4 @@ aiohttp>=3.11.10,<4.0.0
 aiodns>=3.2.0,<4.0.0
 pyperclip>=1.9.0,<2.0.0
 pupdb>=0.1.4,<1.0.0
+kubernetes_asyncio>=31.1.1,<32.0.0

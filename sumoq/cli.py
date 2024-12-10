@@ -9,6 +9,8 @@ import aiohttp
 import asyncclick
 import pyperclip
 import yaml
+from kubernetes_asyncio import client, config
+from kubernetes_asyncio.client.api_client import ApiClient
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.completion import Completer, Completion, FuzzyCompleter
@@ -200,7 +202,7 @@ def get_toolbar():
 @asyncclick.command()
 @asyncclick.option("-c", "--conf", help="config file path")
 @asyncclick.option("-k", "--keys", help="Sumo Logic API key file path")
-@asyncclick.option("-kc", "--kubeconf", help="kubectl config file path")
+@asyncclick.option("-kc", "--kubeconf", help="k8s config file path")
 @asyncclick.option("-cd", "--clean-db", is_flag=True, help="clean up db first")
 @asyncclick.option(
     "-g",
@@ -317,33 +319,22 @@ async def fetch_custom_fields(session):
 
 
 async def fetch_namespaces(kubeconf):
-    """Fetch all possible namespaces from k8s.
-
-    Uses kubectl for now, ideally we can change to use an async k8s client in
-    the future.
-    """
+    """Fetch all possible namespaces from k8s."""
     global _db, _encode, _toolbar_ns
 
     _toolbar_ns = "loading"
     conf_path = os.path.abspath(os.path.expanduser(kubeconf))
 
-    proc = await asyncio.create_subprocess_shell(
-        f"kubectl --kubeconfig {conf_path} get namespaces",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    await config.load_kube_config(conf_path)
+    async with ApiClient() as api:
+        v1api = client.CoreV1Api(api)
+        cursor = None
+        while True:
+            resp = await v1api.list_namespace(_continue=cursor)
+            if not (cursor := resp.metadata._continue):
+                break
 
-    stdout, stderr = await proc.communicate()
-    if proc.returncode != 0 or stderr:
-        return
-
-    _db.set(
-        DBKeys.NAMESPACES,
-        [
-            line.split(" ", 1)[0]
-            for line in stdout.decode(_encode).split("\n")[1:]
-        ],
-    )
+    _db.set(DBKeys.NAMESPACES, [it.metadata.name for it in resp.items])
     _toolbar_ns = "loaded"
 
 
