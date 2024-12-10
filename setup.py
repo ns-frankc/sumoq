@@ -18,6 +18,7 @@ setup(
     author_email="frankc@netskope.com",
     license="MIT",
     packages=["sumoq"],
+    package_data={"sumoq": ["default-config.yml", "db.json"]},
     entry_points="""
         [console_scripts]
         sumoq=sumoq.cli:cli
