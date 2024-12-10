@@ -46,3 +46,7 @@ app_json:
     - zendesk
     - zoom
   tenant.instance: [""]
+
+indexes: []
+
+custom_fields: []

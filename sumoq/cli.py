@@ -2,6 +2,7 @@ import asyncio
 import base64
 import os
 import re
+import shutil
 from enum import Enum
 
 import aiohttp
@@ -17,6 +18,7 @@ from pupdb.core import PupDB
 _cwd = os.path.abspath(os.path.dirname(__file__))
 _encode = "utf-8"
 _sumo_api_base = "https://api.sumologic.com/api/v1"
+_default_conf_name = "default-conf.yml"
 _toolbar_fields = ""
 _toolbar_ns = ""
 _toolbar_idx = ""
@@ -167,14 +169,15 @@ def read_keys(keys):
     return kconf["accessID"], kconf["accessKey"]
 
 
-def read_conf_idx(conf):
-    if not conf:
-        return []
-
+def read_conf_fields_idx(conf):
+    global _db, _toolbar_idx, _toolbar_fields
     with open(conf, "r") as cfp:
         conf = yaml.load(cfp, Loader=yaml.loader.SafeLoader)
 
-    return conf.get("indexes") or []
+    _db.set(DBKeys.FIELDS, conf.get("custom_fields") or [])
+    _db.set(DBKeys.INDEXES, conf.get("indexes") or [])
+    _toolbar_fields = "using conf"
+    _toolbar_idx = "using conf"
 
 
 def get_toolbar():
@@ -190,19 +193,35 @@ def get_toolbar():
 @asyncclick.option("-k", "--keys", help="Sumo Logic API key file path")
 @asyncclick.option("-kc", "--kubeconf", help="kubectl config file path")
 @asyncclick.option("-cd", "--clean-db", is_flag=True, help="clean up db first")
-async def cli(conf, keys, kubeconf, clean_db):
-    global _indexes, _toolbar_fields, _toolbar_idx
+@asyncclick.option(
+    "-g",
+    "--generate-conf",
+    type=asyncclick.Path(),
+    help="Generate a config file from the default config",
+)
+async def cli(conf, keys, kubeconf, clean_db, generate_conf):
+    global _default_conf_name, _toolbar_fields, _toolbar_idx
+
+    if generate_conf:
+        shutil.copy(
+            os.path.join(_cwd, _default_conf_name),
+            os.path.abspath(os.path.expanduser(generate_conf)),
+        )
+        return
     if clean_db:
         _db.truncate_db()
 
+    conf = conf or os.path.join(_cwd, _default_conf_name)
     session = None
-    if auth_header := get_auth_header(keys, conf):
+    if auth_header := get_auth_header(keys):
         session = aiohttp.ClientSession(headers={"Authorization": auth_header})
         asyncio.create_task(fetch_custom_fields(session))
         asyncio.create_task(fetch_idx(session))
-    else:
+    elif _db.get(DBKeys.INDEXES):
         _toolbar_fields = "using cache"
         _toolbar_idx = "using cache"
+    else:
+        read_conf_fields_idx(conf)
     asyncio.create_task(fetch_namespaces(kubeconf))
     asyncio.create_task(fetch_json_suggestions(conf))
 
@@ -227,16 +246,11 @@ async def cli(conf, keys, kubeconf, clean_db):
             pass
 
 
-def get_auth_header(keys, conf):
+def get_auth_header(keys):
     global _encode
     if not keys:
         return
-
-    try:
-        aid, ak = read_keys(keys)
-    except ValueError:
-        _indexes.extend(read_conf_idx(conf))
-        return
+    aid, ak = read_keys(keys)
 
     header_token = base64.b64encode(f"{aid}:{ak}".encode(_encode))
     header_token = header_token.decode(_encode)
@@ -319,11 +333,7 @@ async def fetch_namespaces(kubeconf):
 
 
 async def fetch_json_suggestions(conf):
-    global _cwd, _db
-
-    if not conf:
-        conf = os.path.join(_cwd, "default-config.yml")
-
+    global _db
     with open(conf, "r") as cfp:
         conf_dict = yaml.load(cfp, Loader=yaml.SafeLoader)
 
