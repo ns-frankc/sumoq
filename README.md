@@ -86,10 +86,12 @@ SumoQ provides fuzzy matched suggestions, so engineers wouldn't need to look up 
 
 This would be especially helpful for seldomly used environments like ruh2 or lon3.
 
+In addition to index, completions for `_sourceName` namespace values are also provided. So engineers don't need to look up the values from k8s.
+
 Cached values
 ====
 
-The first time API key and k8s config were provided, suggestion values would be stored in a local db file. Cached values will be used if next time the `-k` and `-kc` options are omitted.
+The first time API key and k8s config were provided, suggestion values would be stored in a local DB file. Cached values will be used if next time the `-k` and `-kc` options are omitted.
 
 Start with `-cd` option to clean up the db values.
 
@@ -165,3 +167,14 @@ app_json:
 ```
 
 Even when the field doesn't have any value suggesitons, keeping the key in suggestion could be helpful for the future. E.g. Keep the `trace-id` field suggestion so it'd be quicker to paste a trace ID after the field name is auto completed.
+
+### indexes, custom_fields, and namespaces
+
+These values are typically fetched from Sumo Logic API, or k8s API and cached.
+But if you don't get the permission to either one of them, e.g. no permission to get the access ID and key for Sumo API. It's still possible to provide the suggestions in the config file.
+
+The order of suggestion sources are:
+1. API if Sumo keys and K8s config are provided.
+2. Cached values if they were retrieved from API before.
+3. Config values if the values weren't available in the local DB file.
+
