@@ -82,7 +82,9 @@ Solution
 
 SumoQ provides fuzzy matched suggestions, so engineers wouldn't need to look up into wiki pages and know that SV5's index starts with "us_". As long as "sv5" is typed, "us_sv5_debug" would show up in suggestions.
 
-![sv5_suggestion](https://github.com/user-attachments/assets/9ae767b1-efdd-4805-b25b-1c80e50ee2e9)
+<img width="1920" alt="image" src="https://github.com/user-attachments/assets/fa46c1d5-7ebd-4e53-803f-e02ae9cd0f68">
+
+This would be especially helpful for seldomly used environments like ruh2 or lon3.
 
 Cached values
 ====
