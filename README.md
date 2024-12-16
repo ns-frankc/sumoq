@@ -8,7 +8,7 @@ An auto-completion Sumo Logic Query builder for debug and monitor usage.
 Demo
 ====
 
-https://github.com/user-attachments/assets/1647ba19-ecd3-45a5-a261-158384ed0da7
+![2024-12-16 14 50 33](https://github.com/user-attachments/assets/1a6b2109-4058-400e-9fb5-b8f27b75cbb8)
 
 Installation
 ====
