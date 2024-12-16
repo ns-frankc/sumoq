@@ -3,7 +3,7 @@ This was a project for 2024 Netskope Hackathon.
 SumoQ
 ====
 
-An interactive Sumo Logic Query builder for debug and monitor usage.
+An auto-completion Sumo Logic Query builder for debug and monitor usage.
 
 Demo
 ====
@@ -30,6 +30,8 @@ accessID: <access ID>
 accessKey: <access key>
 ```
 
+If the Sumo keys aren't available, the default DB file provides a snapshot of field names and index values.
+
 Get the k8s config YAML from Ranch for retrieving the namespace list. E.g. `~/.kube/config/stork-qa01-mp-npe-iad0-nc1.yaml`.
 
 Quick start
@@ -47,7 +49,7 @@ Options:
   -g, --generate-conf PATH  Generate a config file from the default config
   --help                    Show this message and exit.
 
-$> sumoq -k .access_keys.yml -kc ~/.kube/config/stork-qa01-mp-npe-iad0-nc1.yaml
+$> sumoq -kc ~/.kube/config/stork-qa01-mp-npe-iad0-nc1.yaml
 query>
 </code></pre>
 
@@ -58,10 +60,11 @@ query>
   * `_index` values.
   * `_sourceName` namespaces.
   * Self defined keys and values after `where`.
+  * Field names after `by`.
 - \<esc\> \<enter> to complete. The result will be copied to clipboard.
 
 <pre><code>
-query> _index=qa01_mp_npe_debug _sourceName=px-1072-box-1656699
+query> _index=qa01_mp_npe_debug _sourceName=px-10**-box-165****
        | where %"app-name"="hiveworker" and %"trace.sampled"="true"
 
 
