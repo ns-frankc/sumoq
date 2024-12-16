@@ -31,6 +31,7 @@ class CompletionMode(Enum):
     FIELD = 1
     VALUE = 2
     WHERE_VALUE = 3
+    BY_FIELD = 4
 
 
 class SumoQueryCompleter(Completer):
@@ -49,6 +50,7 @@ class SumoQueryCompleter(Completer):
         rf"\(*({_re_field_unit}={_re_value_unit}\)*\s+"
         rf"{_re_and_or_not}+)*"
     )
+    _re_by = r"(.|\s)*by\s+"
     RULES = (
         (_re_fields + r"$", "field"),
         (_re_fields + r"_index=$", "index"),
@@ -60,6 +62,7 @@ class SumoQueryCompleter(Completer):
             _re_where_fields + r"(?P<where_field>([\w\.]+|%\".+\"))=$",
             "where_value",
         ),
+        (_re_by + r"$", "by_field"),
     )
     COMPILED_RULES = [(re.compile(r[0]), r[1]) for r in RULES]
     FIELD_SPECIAL_CHAR_CHECK = re.compile(r"(^[\d\.]|.*[\W\.]|.*\.\.)")
@@ -135,14 +138,22 @@ class SumoQueryCompleter(Completer):
                         (_db.get(DBKeys.JSON_APP) or {}).get(field) or [],
                         mode=CompletionMode.WHERE_VALUE,
                     )
+                elif name == "by_field":
+                    fields = (
+                        self.BUILT_IN_FIELDS
+                        + (_db.get(DBKeys.FIELDS) or [])
+                        + list((_db.get(DBKeys.JSON_APP) or {}).keys())
+                    )
+                    yield from self._yeild_completions(
+                        fields,
+                        mode=CompletionMode.BY_FIELD,
+                    )
                 break
 
     def _yeild_completions(self, values, mode=CompletionMode.VALUE):
         for v in values:
             if mode is CompletionMode.FIELD:
-                if re.match(self.FIELD_SPECIAL_CHAR_CHECK, v):
-                    v = f'%"{v}"'
-                v += "="
+                v = self._escape_field(v) + "="
             elif mode is CompletionMode.VALUE:
                 if re.match(self.VALUE_SPECIAL_CHAR_CHECK, v):
                     v = f'"{v}"'
@@ -151,8 +162,15 @@ class SumoQueryCompleter(Completer):
                     v = f'"{v}"'
                 elif isinstance(v, bool):
                     v = f'"{v}"'.lower()
+            elif mode is CompletionMode.BY_FIELD:
+                v = self._escape_field(v)
 
             yield Completion(v)
+
+    def _escape_field(self, v):
+        if re.match(self.FIELD_SPECIAL_CHAR_CHECK, v):
+            return f'%"{v}"'
+        return v
 
 
 class DBKeys:
