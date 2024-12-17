@@ -1,5 +1,7 @@
 This was a project for 2024 Netskope Hackathon.
 
+The idea was heavily inspired by the awesome [http-prompt](https://github.com/httpie/http-prompt).
+
 SumoQ
 ====
 
@@ -12,6 +14,8 @@ Demo
 
 Installation
 ====
+
+Developed with Python 3.12.4 on MacOS.
 
 Since this project is not yet ready to package and upload, installation will
 be performed by git clone and running `pip install .`, or `make install` for editable mode.
