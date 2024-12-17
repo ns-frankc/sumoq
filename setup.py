@@ -24,5 +24,13 @@ setup(
         sumoq=sumoq.cli:cli
     """,
     install_requires=read_requirements("requirements.txt"),
-    classifiers=[],
+    classifiers=[
+        "Topic :: Terminals",
+        "Topic :: Text Processing",
+        "Programming Language :: Python 3.12",
+        "Programming Language :: Python 3.13",
+        "License :: MIT License",
+        "Intended Audience :: Developers",
+        "Environment :: Console",
+    ],
 )
